@@ -1,0 +1,85 @@
+---
+title: "Rehab"
+author: "Erlangga"
+date: "2025-09-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Load libraries
+library(readr)
+library(dplyr)
+library(stringr)
+library(sf)
+library(leaflet)
+library(htmltools)
+
+# Load CSV data
+DAS_rehab <- read_csv("wilayah_kerja_das.csv")
+
+# Summarize by working area and aggregate hectares and years
+location_summary <- DAS_rehab %>%
+  group_by(wil_kerja) %>%
+  summarise(
+    total_hectare = sum(Hectare, na.rm = TRUE),
+    years = paste(sort(unique(Tahun)), collapse = ", "),
+    .groups = 'drop'
+  ) %>%
+  mutate(wil_kerja_clean = str_to_lower(str_trim(wil_kerja)))
+
+# Load shapefile and transform to WGS84 lat-long for leaflet
+wilayah_kerja_DAS <- st_read("Wilayah_Kerja_DAS") %>%
+  st_transform(crs = 4326) %>%
+  mutate(wil_kerja_clean = str_to_lower(str_trim(wil_kerja)))  # Adjust column if actual name differs
+
+# Join summarized rehab data to shapefile by cleaned working area name
+joined_sf <- wilayah_kerja_DAS %>%
+  left_join(location_summary, by = "wil_kerja_clean")
+
+# Replace NA with zero or "No data" for popup display
+joined_sf$total_hectare[is.na(joined_sf$total_hectare)] <- 0
+joined_sf$years[is.na(joined_sf$years)] <- "No data"
+
+# Create leaflet interactive map with polygons colored by hectare and popup showing years
+pal <- colorNumeric("Blues", domain = joined_sf$total_hectare, na.color = "lightgrey")
+
+map <- leaflet(joined_sf) %>%
+  addTiles() %>%
+  addPolygons(
+    fillColor = ~pal(total_hectare),
+    color = "blue",
+    weight = 1,
+    fillOpacity = 0.5,
+    popup = ~paste0(
+      "<b>", wil_kerja_clean, "</b><br>",
+      "Years: ", years, "<br>",
+      "Total Rehabilitated Area: ", total_hectare, " Hectares"
+    )
+  ) %>%
+  addLegend(
+    "bottomright",
+    pal = pal,
+    values = ~total_hectare,
+    title = "Rehabilitated Area (Hectares)",
+    opacity = 0.7
+  )
+
+map
+
+
+library(htmlwidgets)
+
+# Assuming your leaflet map object is named 'map'
+saveWidget(map, file = "mangrove_rehab1_map.html", selfcontained = TRUE)
+
+```
+
